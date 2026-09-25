@@ -1,0 +1,10 @@
+rules:
+  - id: v06-auth-token-in-localstorage
+    message: Authentication token is stored in JavaScript-accessible localStorage.
+    severity: ERROR
+    languages:
+      - javascript
+      - typescript
+    pattern-either:
+      - pattern: localStorage.setItem("auth_token", $TOKEN)
+      - pattern: window.localStorage.setItem("auth_token", $TOKEN)
