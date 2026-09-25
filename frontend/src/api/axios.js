@@ -1,10 +1,9 @@
 import axios from "axios";
 
-import { getAuthToken, setAuthToken } from "@/context/auth/authStorage";
-
 const axiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api",
   timeout: 5000,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -65,14 +64,9 @@ const normalizeApiError = (error) => {
   return normalized;
 };
 
-// Request Interceptor (Attach token)
+// Request Interceptor (Fix Content-Type for FormData)
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = getAuthToken();
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
-    }
     // Let the browser set the correct `Content-Type` (with boundary) for multipart requests.
     // Also extend the timeout to 30s for file uploads (PDFs can take longer on Cloudinary).
     if (typeof FormData !== "undefined" && config.data instanceof FormData) {
@@ -94,7 +88,10 @@ axiosInstance.interceptors.response.use(
     if (error?.response) {
       // Example: Unauthorized
       if (error.response.status === 401) {
-        setAuthToken(null);
+        // Dispatch event to clear user state in AuthProvider without touching localStorage
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("lawroute:unauthorized"));
+        }
       }
     }
 
