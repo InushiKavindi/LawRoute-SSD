@@ -13,6 +13,11 @@ export const protect = async (req, res, next) => {
       token = req.headers.authorization.split(" ")[1];
     }
 
+    // Check for cookie token if no authorization header token is found
+    if (!token && req.cookies && req.cookies.auth_token) {
+      token = req.cookies.auth_token;
+    }
+
     if (!token) {
       return res.status(401).json({
         success: false,
