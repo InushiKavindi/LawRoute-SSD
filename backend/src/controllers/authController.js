@@ -86,9 +86,6 @@ export const register = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      // TEMPORARY: Keeping token in response body for frontend migration. 
-      // MUST BE REMOVED once frontend switches fully to cookie authentication.
-      token,
     });
   } catch (error) {
     next(error);
@@ -121,9 +118,6 @@ export const login = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      // TEMPORARY: Keeping token in response body for frontend migration. 
-      // MUST BE REMOVED once frontend switches fully to cookie authentication.
-      token,
     });
   } catch (error) {
     next(error);
