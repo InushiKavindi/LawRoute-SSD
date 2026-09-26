@@ -394,7 +394,17 @@ export const googleAuth = async (req, res, next) => {
       }
     }
 
-    sendTokenResponse(user, 200, res);
+    res.status(200).json({
+      success: true,
+      token: generateToken(user),
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto,
+      },
+    });
   } catch (error) {
     console.error("Google Auth error:", error);
     res.status(500).json({ success: false, message: "Google authentication failed" });
