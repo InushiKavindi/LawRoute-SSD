@@ -25,3 +25,12 @@ export const SRI_LANKA_DISTRICTS = [
   "Trincomalee",
   "Vavuniya",
 ];
+
+export const LOCATION_AUTOCOMPLETE_POLICY = Object.freeze({
+  maxQueryLength: 80,
+  maxResults: 10,
+  cacheTtlMs: 5 * 60 * 1000,
+  cacheMaxEntries: 500,
+  requestsPerWindow: 30,
+  windowMs: 60 * 1000,
+});

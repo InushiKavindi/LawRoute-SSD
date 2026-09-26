@@ -1,11 +1,45 @@
-import { SRI_LANKA_DISTRICTS } from "../../constants/locationConstants.js";
+import { LOCATION_AUTOCOMPLETE_POLICY, SRI_LANKA_DISTRICTS } from "../../constants/locationConstants.js";
 
 const GEOAPIFY_BASE_URL = "https://api.geoapify.com/v1/geocode/autocomplete";
 
 const DISTRICT_FETCH_LIMIT = 15;
+const autocompleteCache = new Map();
 
 const normalizeText = (value) =>
   (typeof value === "string" ? value.trim().toLowerCase().replace(/\s+/g, " ") : "");
+
+const getCacheKey = ({ text, limit }) => `${normalizeText(text)}:${limit}`;
+
+const getCachedAutocomplete = (key, now = Date.now()) => {
+  const entry = autocompleteCache.get(key);
+
+  if (!entry) return null;
+
+  if (entry.expiresAt <= now) {
+    autocompleteCache.delete(key);
+    return null;
+  }
+
+  autocompleteCache.delete(key);
+  autocompleteCache.set(key, entry);
+  return entry.value;
+};
+
+const cacheAutocomplete = (key, value, now = Date.now()) => {
+  autocompleteCache.delete(key);
+  autocompleteCache.set(key, {
+    value,
+    expiresAt: now + LOCATION_AUTOCOMPLETE_POLICY.cacheTtlMs,
+  });
+
+  while (autocompleteCache.size > LOCATION_AUTOCOMPLETE_POLICY.cacheMaxEntries) {
+    autocompleteCache.delete(autocompleteCache.keys().next().value);
+  }
+};
+
+export function resetLocationAutocompleteCache() {
+  autocompleteCache.clear();
+}
 
 const isDistrictMatch = (districtValue, districtTarget) => {
   const district = normalizeText(districtValue);
@@ -168,6 +202,13 @@ export async function autocompleteSriLankaLocations({ text, limit = 5 }) {
     throw error;
   }
 
+  const cacheKey = getCacheKey({ text, limit });
+  const cachedResult = getCachedAutocomplete(cacheKey);
+
+  if (cachedResult) {
+    return cachedResult;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   const matchedDistrict = detectDistrictIntent(text);
@@ -215,13 +256,16 @@ export async function autocompleteSriLankaLocations({ text, limit = 5 }) {
       .slice(0, limit)
       .map(({ _score, ...item }) => item);
 
-    return {
+    const result = {
       data: rankedSuggestions,
       meta: {
         mode,
         matchedDistrict,
       },
     };
+
+    cacheAutocomplete(cacheKey, result);
+    return result;
   } catch (error) {
     if (error.name === "AbortError") {
       const timeoutError = new Error("Location lookup timed out. Please try again.");
