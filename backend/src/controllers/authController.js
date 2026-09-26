@@ -4,6 +4,7 @@ import AuthorityProfile from "../models/authorityProfileModel.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { OAuth2Client } from "google-auth-library";
 
 dotenv.config();
 
@@ -341,5 +342,61 @@ export const resendVerificationEmail = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// @desc    Google OAuth login/register
+// @route   POST /api/auth/google
+// @access  Public
+export const googleAuth = async (req, res, next) => {
+  try {
+    const { token, role } = req.body;
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      if (!role) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select a role to complete registration.",
+        });
+      }
+
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        role,
+        profilePhoto: picture,
+        isEmailVerified: true,
+      });
+      
+      // Initialize profiles for lawyer/authority if needed based on role (similar to standard register)
+      if (role === "lawyer") {
+        await LawyerProfile.create({ user: user._id });
+      } else if (role === "authority") {
+        await AuthorityProfile.create({ user: user._id });
+      }
+    } else {
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.isEmailVerified = true;
+        await user.save();
+      }
+    }
+
+    sendTokenResponse(user, 200, res);
+  } catch (error) {
+    console.error("Google Auth error:", error);
+    res.status(500).json({ success: false, message: "Google authentication failed" });
   }
 };

@@ -19,3 +19,7 @@ export const resetPassword = (data) => {
 export const resendVerificationEmail = (data) => {
   return axios.post("/auth/resend-verification", data);
 };
+
+export const googleAuth = (data) => {
+  return axios.post("/auth/google", data);
+};

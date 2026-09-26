@@ -16,6 +16,9 @@ router.post("/reset-password", authController.resetPassword);
 router.post("/verify-email", authController.verifyEmail);
 router.post("/resend-verification", authController.resendVerificationEmail);
 
+// Google OAuth
+router.post("/google", authController.googleAuth);
+
 // Example protected route for testing
 router.get("/admin-only", protect, authorizeRoles("admin"), (req, res) => {
   res.json({

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { loginUser, registerUser, resendVerificationEmail } from "@/api/services/authService";
+import { loginUser, registerUser, resendVerificationEmail, googleAuth } from "@/api/services/authService";
 import { toast } from "sonner";
 
 import SignInForm from "@/public/auth/SignInForm.jsx";
@@ -59,10 +59,15 @@ export default function AuthPage() {
     setBusy(true);
 
     try {
-      const response = await loginUser({
-        email: values.email,
-        password: values.password,
-      });
+      let response;
+      if (values.googleToken) {
+        response = await googleAuth({ token: values.googleToken });
+      } else {
+        response = await loginUser({
+          email: values.email,
+          password: values.password,
+        });
+      }
 
       if (response?.data?.token) {
         setToken(response.data.token);
@@ -95,14 +100,26 @@ export default function AuthPage() {
     setBusy(true);
 
     try {
-      const payload = {
-        name: values.name,
-        email: values.email,
-        password: values.password,
-        role: values.role,
-      };
+      let response;
+      if (values.googleToken) {
+        response = await googleAuth({
+          token: values.googleToken,
+          role: values.role,
+        });
+        if (response?.data?.token) {
+          setToken(response.data.token);
+          return;
+        }
+      } else {
+        const payload = {
+          name: values.name,
+          email: values.email,
+          password: values.password,
+          role: values.role,
+        };
 
-      const response = await registerUser(payload);
+        response = await registerUser(payload);
+      }
 
       if (response?.data?.success) {
         setRegistrationMessage(response.data.message || "Registration successful. Please check your email to verify your account.");
