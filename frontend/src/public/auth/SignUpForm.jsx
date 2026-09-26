@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { GoogleLogin } from "@react-oauth/google";
 import {
   Field,
   FieldDescription,
@@ -32,6 +33,27 @@ export default function SignUpForm({
       }}
     >
       <FieldGroup>
+        <div className="flex items-center gap-4">
+          <Label className="text-sm font-bold leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 whitespace-nowrap">I am a</Label>
+          <RadioGroup
+            value={values.role}
+            onValueChange={(role) => onChange({ ...values, role })}
+            className="flex flex-row gap-6"
+          >
+            {ROLE_OPTIONS.map((opt) => {
+              const id = `${idPrefix}-role-${opt.value}`;
+              return (
+                <div key={opt.value} className="flex items-center gap-2">
+                  <RadioGroupItem value={opt.value} id={id} />
+                  <Label htmlFor={id} className="cursor-pointer font-medium">{opt.label}</Label>
+                </div>
+              );
+            })}
+          </RadioGroup>
+        </div>
+        
+        <div className="w-full border-t border-muted-foreground/20 my-6"></div>
+
         <Field>
           <FieldLabel htmlFor={`${idPrefix}-name`}>Name</FieldLabel>
           <Input
@@ -74,24 +96,6 @@ export default function SignUpForm({
           </FieldDescription>
         </Field>
 
-        <Field>
-          <FieldLabel>Role</FieldLabel>
-          <RadioGroup
-            value={values.role}
-            onValueChange={(role) => onChange({ ...values, role })}
-            className="grid gap-2"
-          >
-            {ROLE_OPTIONS.map((opt) => {
-              const id = `${idPrefix}-role-${opt.value}`;
-              return (
-                <div key={opt.value} className="flex items-center gap-2">
-                  <RadioGroupItem value={opt.value} id={id} />
-                  <Label htmlFor={id}>{opt.label}</Label>
-                </div>
-              );
-            })}
-          </RadioGroup>
-        </Field>
 
         {error ? (
           <Field>
@@ -105,6 +109,20 @@ export default function SignUpForm({
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? "Creating account..." : "Sign up"}
           </Button>
+        </Field>
+
+        <Field>
+          <div className="flex w-full items-center justify-center my-2">
+            <span className="w-full border-t border-muted-foreground/30"></span>
+            <span className="px-3 text-sm text-muted-foreground">or</span>
+            <span className="w-full border-t border-muted-foreground/30"></span>
+          </div>
+          <div className="flex justify-center w-full">
+            <GoogleLogin
+              onSuccess={(credentialResponse) => onSubmit({ googleToken: credentialResponse.credential, role: values.role })}
+              onError={() => console.error("Google Sign Up Failed")}
+            />
+          </div>
         </Field>
 
         <Field>

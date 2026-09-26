@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { GoogleLogin } from "@react-oauth/google";
 import {
   Field,
   FieldDescription,
@@ -136,6 +137,20 @@ export default function SignInForm({
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? "Signing in..." : "Sign in"}
           </Button>
+        </Field>
+
+        <Field>
+          <div className="flex w-full items-center justify-center my-2">
+            <span className="w-full border-t border-muted-foreground/30"></span>
+            <span className="px-3 text-sm text-muted-foreground">or</span>
+            <span className="w-full border-t border-muted-foreground/30"></span>
+          </div>
+          <div className="flex justify-center w-full">
+            <GoogleLogin
+              onSuccess={(credentialResponse) => onSubmit({ googleToken: credentialResponse.credential })}
+              onError={() => console.error("Google Login Failed")}
+            />
+          </div>
         </Field>
 
         <Field>

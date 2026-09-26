@@ -4,6 +4,7 @@ import AuthorityProfile from "../models/authorityProfileModel.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { OAuth2Client } from "google-auth-library";
 
 dotenv.config();
 
@@ -74,11 +75,38 @@ export const register = async (req, res, next) => {
       }
     }
 
-    const token = generateToken(user);
+    const token = crypto.randomBytes(20).toString("hex");
+    user.emailVerificationToken = token;
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    await user.save({ validateBeforeSave: false });
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const verificationUrl = `${frontendUrl}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+
+    (async () => {
+      try {
+        const [{ emailVerificationTemplate }, { sendEmail }] = await Promise.all([
+          import("../services/email/emailVerificationTemplates.js"),
+          import("../services/email/emailService.js"),
+        ]);
+
+        const { subject, html } = emailVerificationTemplate({
+          name: user.name,
+          verificationUrl,
+        });
+
+        await sendEmail({ to: email, subject, html });
+      } catch (err) {
+        console.error(
+          "[Email] Failed to send email verification email:",
+          err?.message || err,
+        );
+      }
+    })();
 
     res.status(201).json({
       success: true,
-      token,
+      message: "Registration successful. Please check your email to verify your account.",
     });
   } catch (error) {
     next(error);
@@ -96,6 +124,13 @@ export const login = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
+      });
+    }
+
+    if (!user.isEmailVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email address before logging in.",
       });
     }
 
@@ -202,5 +237,176 @@ export const resetPassword = async (req, res, next) => {
       .json({ success: true, message: "Password has been reset" });
   } catch (error) {
     next(error);
+  }
+};
+
+// Verify email using token
+export const verifyEmail = async (req, res, next) => {
+  try {
+    const { token, email } = req.body;
+    if (!token || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Token and email are required",
+      });
+    }
+
+    const user = await User.findOne({
+      email,
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired verification token" });
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    // Optionally generate token for auto-login
+    const jwtToken = generateToken(user);
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+      token: jwtToken,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Resend verification email
+export const resendVerificationEmail = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: "If that email exists, a verification link was sent",
+      });
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified",
+      });
+    }
+
+    const token = crypto.randomBytes(20).toString("hex");
+    user.emailVerificationToken = token;
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+    await user.save({ validateBeforeSave: false });
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const verificationUrl = `${frontendUrl}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+
+    (async () => {
+      try {
+        const [{ emailVerificationTemplate }, { sendEmail }] = await Promise.all([
+          import("../services/email/emailVerificationTemplates.js"),
+          import("../services/email/emailService.js"),
+        ]);
+
+        const { subject, html } = emailVerificationTemplate({
+          name: user.name,
+          verificationUrl,
+        });
+
+        await sendEmail({ to: email, subject, html });
+      } catch (err) {
+        console.error(
+          "[Email] Failed to resend verification email:",
+          err?.message || err,
+        );
+      }
+    })();
+
+    return res.status(200).json({
+      success: true,
+      message: "If that email exists, a verification link was sent",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Google OAuth login/register
+// @route   POST /api/auth/google
+// @access  Public
+export const googleAuth = async (req, res, next) => {
+  try {
+    const { token, role } = req.body;
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      if (!role) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select a role to complete registration.",
+        });
+      }
+
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        role,
+        profilePhoto: picture,
+        isEmailVerified: true,
+      });
+      
+      // Initialize profiles for lawyer/authority if needed based on role (similar to standard register)
+      if (role === "lawyer") {
+        await LawyerProfile.create({ user: user._id });
+      } else if (role === "authority") {
+        await AuthorityProfile.create({ user: user._id });
+      }
+    } else {
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.isEmailVerified = true;
+        await user.save();
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      token: generateToken(user),
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto,
+      },
+    });
+  } catch (error) {
+    console.error("Google Auth error:", error);
+    res.status(500).json({ success: false, message: "Google authentication failed" });
   }
 };
