@@ -12,6 +12,10 @@ router.post("/login", authController.login);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/reset-password", authController.resetPassword);
 
+// Email verification
+router.post("/verify-email", authController.verifyEmail);
+router.post("/resend-verification", authController.resendVerificationEmail);
+
 // Example protected route for testing
 router.get("/admin-only", protect, authorizeRoles("admin"), (req, res) => {
   res.json({

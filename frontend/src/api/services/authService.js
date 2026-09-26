@@ -15,3 +15,7 @@ export const forgotPassword = (data) => {
 export const resetPassword = (data) => {
   return axios.post("/auth/reset-password", data);
 };
+
+export const resendVerificationEmail = (data) => {
+  return axios.post("/auth/resend-verification", data);
+};

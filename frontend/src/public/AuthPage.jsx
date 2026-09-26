@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { loginUser, registerUser } from "@/api/services/authService";
+import { loginUser, registerUser, resendVerificationEmail } from "@/api/services/authService";
+import { toast } from "sonner";
 
 import SignInForm from "@/public/auth/SignInForm.jsx";
 import SignUpForm from "@/public/auth/SignUpForm.jsx";
@@ -43,6 +44,9 @@ export default function AuthPage() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showResend, setShowResend] = useState(false);
+  const [registrationMessage, setRegistrationMessage] = useState("");
+  const [resending, setResending] = useState(false);
 
   const title = isSignUp ? "Get Started" : "Welcome back";
   const subtitle = isSignUp
@@ -51,6 +55,7 @@ export default function AuthPage() {
 
   async function submitSignIn(values) {
     setError("");
+    setShowResend(false);
     setBusy(true);
 
     try {
@@ -63,11 +68,27 @@ export default function AuthPage() {
         setToken(response.data.token);
       }
     } catch (err) {
-      setError(err?.message || "Sign in failed");
+      if (err?.status === 403) {
+        setShowResend(true);
+      }
+      setError(err?.data?.message || err?.message || "Sign in failed");
     } finally {
       setBusy(false);
     }
   }
+
+  const handleResendVerification = async () => {
+    setResending(true);
+    try {
+      await resendVerificationEmail({ email: signInValues.email });
+      toast.success("Verification email resent. Please check your inbox.");
+      setShowResend(false);
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || "Failed to resend verification email");
+    } finally {
+      setResending(false);
+    }
+  };
 
   async function submitSignUp(values) {
     setError("");
@@ -83,11 +104,11 @@ export default function AuthPage() {
 
       const response = await registerUser(payload);
 
-      if (response?.data?.token) {
-        setToken(response.data.token);
+      if (response?.data?.success) {
+        setRegistrationMessage(response.data.message || "Registration successful. Please check your email to verify your account.");
       }
     } catch (err) {
-      setError(err?.message || "Sign up failed");
+      setError(err?.data?.message || err?.message || "Sign up failed");
     } finally {
       setBusy(false);
     }
@@ -120,18 +141,50 @@ export default function AuthPage() {
                   </div>
 
                   {!isSignUp ? (
-                    <SignInForm
-                      idPrefix="signin"
-                      values={signInValues}
-                      onChange={setSignInValues}
-                      onSubmit={submitSignIn}
-                      onSwitchToSignUp={() => {
-                        setError("");
-                        setMode("signup");
-                      }}
-                      busy={busy}
-                      error={error}
-                    />
+                    <div className="flex flex-col space-y-4">
+                      <SignInForm
+                        idPrefix="signin"
+                        values={signInValues}
+                        onChange={setSignInValues}
+                        onSubmit={submitSignIn}
+                        onSwitchToSignUp={() => {
+                          setError("");
+                          setShowResend(false);
+                          setMode("signup");
+                        }}
+                        busy={busy}
+                        error={error}
+                      />
+                      {showResend && (
+                        <button
+                          type="button"
+                          onClick={handleResendVerification}
+                          disabled={resending}
+                          className="text-sm font-medium text-primary hover:underline self-start"
+                        >
+                          {resending ? "Resending..." : "Resend Verification Email"}
+                        </button>
+                      )}
+                    </div>
+                  ) : registrationMessage ? (
+                    <div className="flex flex-col space-y-4 rounded-lg bg-green-50 p-6 text-green-800">
+                      <div className="flex items-center gap-2 font-medium">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        Success!
+                      </div>
+                      <p className="text-sm">{registrationMessage}</p>
+                      <button
+                        onClick={() => {
+                          setRegistrationMessage("");
+                          setMode("signin");
+                        }}
+                        className="mt-4 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
+                      >
+                        Go to Sign In
+                      </button>
+                    </div>
                   ) : (
                     <SignUpForm
                       idPrefix="signup"
@@ -208,18 +261,50 @@ export default function AuthPage() {
               </div>
 
               {!isSignUp ? (
-                <SignInForm
-                  idPrefix="m-signin"
-                  values={signInValues}
-                  onChange={setSignInValues}
-                  onSubmit={submitSignIn}
-                  onSwitchToSignUp={() => {
-                    setError("");
-                    setMode("signup");
-                  }}
-                  busy={busy}
-                  error={error}
-                />
+                <div className="flex flex-col space-y-4">
+                  <SignInForm
+                    idPrefix="m-signin"
+                    values={signInValues}
+                    onChange={setSignInValues}
+                    onSubmit={submitSignIn}
+                    onSwitchToSignUp={() => {
+                      setError("");
+                      setShowResend(false);
+                      setMode("signup");
+                    }}
+                    busy={busy}
+                    error={error}
+                  />
+                  {showResend && (
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={resending}
+                      className="text-sm font-medium text-primary hover:underline self-start"
+                    >
+                      {resending ? "Resending..." : "Resend Verification Email"}
+                    </button>
+                  )}
+                </div>
+              ) : registrationMessage ? (
+                <div className="flex flex-col space-y-4 rounded-lg bg-green-50 p-6 text-green-800">
+                  <div className="flex items-center gap-2 font-medium">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    Success!
+                  </div>
+                  <p className="text-sm">{registrationMessage}</p>
+                  <button
+                    onClick={() => {
+                      setRegistrationMessage("");
+                      setMode("signin");
+                    }}
+                    className="mt-4 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
+                  >
+                    Go to Sign In
+                  </button>
+                </div>
               ) : (
                 <SignUpForm
                   idPrefix="m-signup"
