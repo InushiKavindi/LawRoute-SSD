@@ -1,74 +1,61 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AuthContext } from "./authContext";
-import { getAuthToken, setAuthToken, subscribeAuthToken } from "./authStorage";
-import { parseJwt } from "./jwt";
 import { getMe } from "@/api/services/userService";
 
 export function AuthProvider({ children }) {
-  const [token, setTokenState] = useState(() => getAuthToken());
   const [user, setUser] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  useEffect(() => subscribeAuthToken(setTokenState), []);
-
-  const claims = useMemo(() => parseJwt(token), [token]);
+  const loadUserProfile = useCallback(async () => {
+    try {
+      const response = await getMe();
+      const nextUser = response?.data?.user ?? null;
+      setUser(nextUser);
+    } catch {
+      setUser(null);
+    } finally {
+      setIsInitializing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadUserProfile() {
-      if (!token || !claims?.role) {
-        setUser(null);
-        return;
-      }
-
-      try {
-        const response = await getMe();
-        const nextUser = response?.data?.user ?? null;
-        if (!cancelled) {
-          setUser(nextUser);
-        }
-      } catch {
-        if (!cancelled) {
-          setUser(null);
-        }
-      }
-    }
-
     loadUserProfile();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, claims?.role]);
+  }, [loadUserProfile]);
 
   useEffect(() => {
-    if (token && !claims) {
-      setAuthToken(null);
-    }
-  }, [token, claims]);
+    const handleUnauthorized = () => {
+      setUser(null);
+    };
 
-  const setToken = useCallback((nextToken) => {
-    setAuthToken(nextToken);
+    if (typeof window !== "undefined") {
+      window.addEventListener("lawroute:unauthorized", handleUnauthorized);
+      return () => {
+        window.removeEventListener("lawroute:unauthorized", handleUnauthorized);
+      };
+    }
   }, []);
 
   const signOut = useCallback(() => {
-    setAuthToken(null);
     setUser(null);
   }, []);
 
   const value = useMemo(
     () => ({
-      token,
-      userId: claims?.id ?? null,
-      role: claims?.role ?? null,
-      isAuthenticated: Boolean(token && claims?.role),
+      userId: user?.id ?? null,
+      role: user?.role ?? null,
+      isAuthenticated: Boolean(user && user.role),
       user,
-      setToken,
       signOut,
       setUser,
+      refreshAuth: loadUserProfile,
     }),
-    [token, claims, user, setToken, signOut, setUser],
+    [user, signOut, loadUserProfile],
   );
+
+  if (isInitializing) {
+    return null; // Or a loading spinner. Blocks rendering until auth state is known, preserving route guards.
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -15,3 +15,7 @@ export const forgotPassword = (data) => {
 export const resetPassword = (data) => {
   return axios.post("/auth/reset-password", data);
 };
+
+export const logoutUser = () => {
+  return axios.post("/auth/logout");
+};

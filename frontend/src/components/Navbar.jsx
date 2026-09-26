@@ -35,6 +35,7 @@ import {
 import { ChevronDownIcon, MenuIcon } from "lucide-react";
 import { useAuth } from "@/context/auth/useAuth";
 import { getDashboardPathForRole } from "@/context/auth/authRouting";
+import { logoutUser } from "@/api/services/authService";
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -51,7 +52,12 @@ export default function Navbar() {
     .map((part) => part[0]?.toUpperCase())
     .join("");
 
-  function handleSignOut() {
+  async function handleSignOut() {
+    try {
+      await logoutUser();
+    } catch {
+      // ignore
+    }
     signOut();
     navigate("/");
   }

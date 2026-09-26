@@ -49,15 +49,14 @@ export const createArticle = async ({
   return article;
 };
 
-export const getAllArticles = async ({ authHeader, query }) => {
+export const getAllArticles = async ({ token, query }) => {
   let isAdmin = false;
   let adminId = null;
   let requesterId = null;
   let requesterRole = null;
 
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (token) {
     try {
-      const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select("role");
       if (user) {
@@ -111,13 +110,12 @@ export const getAllArticles = async ({ authHeader, query }) => {
 };
 
 // Return pending articles authored by others (exclude the requester).
-export const getPendingOthersArticles = async ({ authHeader, extraQuery = {} }) => {
+export const getPendingOthersArticles = async ({ token, extraQuery = {} }) => {
   let requesterId = null;
   let requesterRole = null;
 
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (token) {
     try {
-      const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select("role");
       if (user) {
@@ -384,7 +382,7 @@ export const updateArticle = async ({ id, user, title, content, category, imageU
   return article;
 };
 
-export const getArticleById = async ({ id, authHeader }) => {
+export const getArticleById = async ({ id, token }) => {
   const cleanId = String(id).replace(/[<>]/g, "");
 
   if (!mongoose.Types.ObjectId.isValid(cleanId)) {
@@ -403,9 +401,8 @@ export const getArticleById = async ({ id, authHeader }) => {
   // Determine requester role (if any)
   let requesterId = null;
   let requesterRole = null;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (token) {
     try {
-      const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select("role");
       if (user) {

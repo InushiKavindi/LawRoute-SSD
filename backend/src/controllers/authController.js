@@ -76,9 +76,16 @@ export const register = async (req, res, next) => {
 
     const token = generateToken(user);
 
+    // Set the cookie with the JWT
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
     res.status(201).json({
       success: true,
-      token,
     });
   } catch (error) {
     next(error);
@@ -101,16 +108,40 @@ export const login = async (req, res, next) => {
 
     const token = generateToken(user);
 
+    // Set the cookie with the JWT
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
     res.status(200).json({
       success: true,
-      token,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Forgot password: generate reset token and send email
+// Logout
+export const logout = async (req, res, next) => {
+  try {
+    res.clearCookie("auth_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Forgot password: generate a single-use reset credential
 export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -122,22 +153,36 @@ export const forgotPassword = async (req, res, next) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      // Do not reveal whether email exists
+      // Return a generic response to avoid user-account enumeration.
       return res.status(200).json({
         success: true,
         message: "If that email exists, a reset link was sent",
       });
     }
 
-    const token = crypto.randomBytes(20).toString("hex");
-    user.resetPasswordToken = token;
-    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+    // Generate a high-entropy reset token.
+    const rawToken = crypto.randomBytes(32).toString("hex");
+
+    // Store only a one-way digest of the reset token.
+    // This prevents a database disclosure from directly exposing
+    // the usable password-reset credential.
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+
+    // Persist only the digest and its expiration time.
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
     await user.save({ validateBeforeSave: false });
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const resetUrl = `${frontendUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
-    // Use shared email service and templates (non-blocking)
+    // Send the original token to the intended user.
+    // The database stores only its SHA-256 digest.
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}` + `&email=${encodeURIComponent(email)}`;
+
+    // Send the reset link through the application's email service.
     (async () => {
       try {
         const [{ passwordResetTemplate }, { sendEmail }] = await Promise.all([
@@ -150,10 +195,12 @@ export const forgotPassword = async (req, res, next) => {
           resetUrl,
         });
 
-        await sendEmail({ to: email, subject, html });
+        await sendEmail({
+          to: email,
+          subject,
+          html,
+        });
       } catch (err) {
-        // Log and continue — keep API response same as when email succeeds
-        // eslint-disable-next-line no-console
         console.error(
           "[Email] Failed to send password reset email:",
           err?.message || err,
@@ -170,10 +217,11 @@ export const forgotPassword = async (req, res, next) => {
   }
 };
 
-// Reset password using token
+// Reset password using the single-use reset credential
 export const resetPassword = async (req, res, next) => {
   try {
     const { token, email, password } = req.body;
+
     if (!token || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -181,25 +229,41 @@ export const resetPassword = async (req, res, next) => {
       });
     }
 
+    // Derive the same SHA-256 digest from the submitted token
+    // before performing the database lookup.
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
     const user = await User.findOne({
       email,
-      resetPasswordToken: token,
+
+      // Compare token digests rather than storing/comparing raw secrets.
+      resetPasswordToken: hashedToken,
+
+      // Accept only tokens that have not expired.
       resetPasswordExpires: { $gt: Date.now() },
     });
+
     if (!user) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or expired token" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
     }
 
     user.password = password;
+    // Invalidate the reset credential immediately after successful use.
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
+
     await user.save();
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Password has been reset" });
+    return res.status(200).json({
+      success: true,
+      message: "Password has been reset",
+    });
   } catch (error) {
     next(error);
   }
