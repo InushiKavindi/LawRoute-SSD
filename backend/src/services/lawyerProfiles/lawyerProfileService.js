@@ -1,6 +1,7 @@
 import User from "../../models/userModel.js";
 import LawyerProfile from "../../models/lawyerProfiles/lawyerProfileModel.js";
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 
 const VERIFICATION_STATUSES = ["pending", "approved", "rejected"];
 
@@ -383,7 +384,7 @@ export const findApprovedLawyerProfiles = async ({ search, expertise, isFree } =
 };
 
 // Return a single lawyer profile by lawyer profile ID or associated user ID.
-export const findLawyerProfileById = async (id) => {
+export const findLawyerProfileById = async (id, authHeader = null) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     const error = new Error("Invalid ID format");
     error.statusCode = 400;
@@ -401,6 +402,29 @@ export const findLawyerProfileById = async (id) => {
     const error = new Error("Lawyer profile not found");
     error.statusCode = 404;
     throw error;
+  }
+
+  // Restrict access to unapproved profiles to admins only
+  if (lawyerProfile.verificationStatus !== "approved") {
+    let requesterRole = null;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id).select("role");
+        if (user) {
+          requesterRole = user.role;
+        }
+      } catch (e) {
+        // ignore invalid token
+      }
+    }
+
+    if (requesterRole !== "admin") {
+      const error = new Error("Lawyer profile not found");
+      error.statusCode = 404;
+      throw error;
+    }
   }
 
   return mapLawyerProfileResponse(lawyerProfile);
