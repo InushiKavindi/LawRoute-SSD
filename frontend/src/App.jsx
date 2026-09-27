@@ -52,6 +52,7 @@ import PublicArticlesPage from "@/public/legal-library/articles/PublicArticlesPa
 import PublicArticleView from "@/public/legal-library/articles/components/PublicArticleView.jsx";
 import PublicDocumentsPage from "@/public/legal-library/documents/PublicDocumentsPage.jsx";
 import ResetPassword from "@/public/ResetPassword.jsx";
+import VerifyEmail from "@/public/VerifyEmail.jsx";
 
 export default function App() {
   return (
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/civil-issues" element={<PublicCivilIssuesPage />} />
         <Route path="/find-a-lawyer" element={<FindLawyerPage />} />
         <Route path="/lawyers/:id" element={<PublicLawyerProfilePage />} />

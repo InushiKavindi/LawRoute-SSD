@@ -4,13 +4,16 @@ import "./index.css";
 import App from "./App.jsx";
 import { TooltipProvider } from "./components/ui/tooltip.jsx";
 import AppProvider from "./context/AppProvider.jsx";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <TooltipProvider>
-      <AppProvider>
-        <App />
-      </AppProvider>
-    </TooltipProvider>
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "placeholder"}>
+      <TooltipProvider>
+        <AppProvider>
+          <App />
+        </AppProvider>
+      </TooltipProvider>
+    </GoogleOAuthProvider>
   </StrictMode>,
 );
