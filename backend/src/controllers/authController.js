@@ -21,6 +21,14 @@ export const register = async (req, res, next) => {
     const { name, email, password, role, expertise, isFree, managedCategory } =
       req.body;
 
+    const allowedRoles = ["user", "lawyer", "authority"];
+    if (role && !allowedRoles.includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid role specified for registration",
+      });
+    }
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -351,6 +359,15 @@ export const resendVerificationEmail = async (req, res, next) => {
 export const googleAuth = async (req, res, next) => {
   try {
     const { token, role } = req.body;
+
+    const allowedRoles = ["user", "lawyer", "authority"];
+    if (role && !allowedRoles.includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid role specified for registration",
+      });
+    }
+
     const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
     const ticket = await client.verifyIdToken({
