@@ -21,7 +21,11 @@ export const register = async (req, res, next) => {
     const { name, email, password, role, expertise, isFree, managedCategory } =
       req.body;
 
-    const allowedRoles = ["user", "lawyer", "authority"];
+    if (typeof email !== "string" || typeof password !== "string") {
+      return res.status(400).json({ success: false, message: "Invalid input format" });
+    }
+
+    const allowedRoles = ["user", "lawyer"];
     if (role && !allowedRoles.includes(role)) {
       return res.status(403).json({
         success: false,
@@ -126,6 +130,13 @@ export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
+    if (typeof email !== "string" || typeof password !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input format",
+      });
+    }
+
     const user = await User.findOne({ email }).select("+password");
 
     if (!user || !(await user.comparePassword(password))) {
@@ -157,10 +168,10 @@ export const login = async (req, res, next) => {
 export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
-    if (!email) {
+    if (!email || typeof email !== "string") {
       return res
         .status(400)
-        .json({ success: false, message: "Email is required" });
+        .json({ success: false, message: "Valid email is required" });
     }
 
     const user = await User.findOne({ email });
@@ -217,10 +228,10 @@ export const forgotPassword = async (req, res, next) => {
 export const resetPassword = async (req, res, next) => {
   try {
     const { token, email, password } = req.body;
-    if (!token || !email || !password) {
+    if (!token || !email || !password || typeof token !== "string" || typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({
         success: false,
-        message: "Token, email and new password are required",
+        message: "Valid token, email and new password are required",
       });
     }
 
@@ -252,10 +263,10 @@ export const resetPassword = async (req, res, next) => {
 export const verifyEmail = async (req, res, next) => {
   try {
     const { token, email } = req.body;
-    if (!token || !email) {
+    if (!token || !email || typeof token !== "string" || typeof email !== "string") {
       return res.status(400).json({
         success: false,
-        message: "Token and email are required",
+        message: "Valid token and email are required",
       });
     }
 
@@ -293,10 +304,10 @@ export const verifyEmail = async (req, res, next) => {
 export const resendVerificationEmail = async (req, res, next) => {
   try {
     const { email } = req.body;
-    if (!email) {
+    if (!email || typeof email !== "string") {
       return res.status(400).json({
         success: false,
-        message: "Email is required",
+        message: "Valid email is required",
       });
     }
 
@@ -360,7 +371,7 @@ export const googleAuth = async (req, res, next) => {
   try {
     const { token, role } = req.body;
 
-    const allowedRoles = ["user", "lawyer", "authority"];
+    const allowedRoles = ["user", "lawyer"];
     if (role && !allowedRoles.includes(role)) {
       return res.status(403).json({
         success: false,
