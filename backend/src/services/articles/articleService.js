@@ -170,6 +170,13 @@ export const updateArticleStatus = async ({ id, status, user }) => {
     throw err;
   }
 
+  // Prevent modifying the status of a rejected article
+  if (article.status === "rejected") {
+    const err = new Error("The status of a rejected article cannot be changed");
+    err.status = 403;
+    throw err;
+  }
+
   // Prevent reverting a published article back to pending
   if (String(article.status) === "published" && status === "pending") {
     const err = new Error("Published articles cannot be changed back to pending");
@@ -264,6 +271,13 @@ export const updateArticleStatus = async ({ id, status, user }) => {
       console.error("[Email] Error preparing article status notification:", err.message);
     }
     return { deleted: false, article };
+  }
+
+  // PENDING: only the article's author or an admin may revert an article to pending
+  if (actingUserId !== authorId && actingRole !== "admin") {
+    const err = new Error("Only the article author or an admin can change the status to pending");
+    err.status = 403;
+    throw err;
   }
 
   article.publishedBy = null;
