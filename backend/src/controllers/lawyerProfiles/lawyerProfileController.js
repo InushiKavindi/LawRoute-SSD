@@ -113,7 +113,7 @@ export const updateLawyerVerificationStatus = async (req, res, next) => {
 // Get a single lawyer profile by ID.
 export const getLawyerProfileById = async (req, res, next) => {
   try {
-    const lawyerProfile = await findLawyerProfileById(req.params.id);
+    const lawyerProfile = await findLawyerProfileById(req.params.id, req.headers.authorization);
 
     return res.status(200).json({
       success: true,
