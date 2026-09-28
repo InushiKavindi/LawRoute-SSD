@@ -1,0 +1,35 @@
+rules:
+  - id: react-dangerously-set-inner-html
+    languages:
+      - javascript
+      - typescript
+    message: "Potential XSS: untrusted content is rendered using dangerouslySetInnerHTML."
+    severity: WARNING
+    patterns:
+      - pattern: |
+          <$TAG ... dangerouslySetInnerHTML={{ __html: $CONTENT }} ... />
+      - pattern-not: |
+          <$TAG ... dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(...) }} ... />
+    metadata:
+      category: security
+      technology:
+        - react
+      cwe:
+        - "CWE-79"
+
+
+# rules:
+#   - id: react-dangerously-set-inner-html
+#     languages:
+#       - javascript
+#       - typescript
+#     message: "Potential XSS: untrusted content is rendered using dangerouslySetInnerHTML."
+#     severity: WARNING
+#     pattern: |
+#       <$TAG ... dangerouslySetInnerHTML={{ __html: $CONTENT }} ... />
+#     metadata:
+#       category: security
+#       technology:
+#         - react
+#       cwe:
+#         - "CWE-79"

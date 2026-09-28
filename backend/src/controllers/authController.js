@@ -4,6 +4,7 @@ import AuthorityProfile from "../models/authorityProfileModel.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { OAuth2Client } from "google-auth-library";
 
 dotenv.config();
 
@@ -19,6 +20,18 @@ export const register = async (req, res, next) => {
   try {
     const { name, email, password, role, expertise, isFree, managedCategory } =
       req.body;
+
+    if (typeof email !== "string" || typeof password !== "string") {
+      return res.status(400).json({ success: false, message: "Invalid input format" });
+    }
+
+    const allowedRoles = ["user", "lawyer"];
+    if (role && !allowedRoles.includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid role specified for registration",
+      });
+    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -74,11 +87,46 @@ export const register = async (req, res, next) => {
       }
     }
 
-    const token = generateToken(user);
+    const token = crypto.randomBytes(20).toString("hex");
+    user.emailVerificationToken = token;
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    await user.save({ validateBeforeSave: false });
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const verificationUrl = `${frontendUrl}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+
+    (async () => {
+      try {
+        const [{ emailVerificationTemplate }, { sendEmail }] = await Promise.all([
+          import("../services/email/emailVerificationTemplates.js"),
+          import("../services/email/emailService.js"),
+        ]);
+
+        const { subject, html } = emailVerificationTemplate({
+          name: user.name,
+          verificationUrl,
+        });
+
+        await sendEmail({ to: email, subject, html });
+      } catch (err) {
+        console.error(
+          "[Email] Failed to send email verification email:",
+          err?.message || err,
+        );
+      }
+    })();
+
+    // Set the cookie with the JWT
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
 
     res.status(201).json({
       success: true,
-      token,
+      message: "Registration successful. Please check your email to verify your account.",
     });
   } catch (error) {
     next(error);
@@ -90,6 +138,13 @@ export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
+    if (typeof email !== "string" || typeof password !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input format",
+      });
+    }
+
     const user = await User.findOne({ email }).select("+password");
 
     if (!user || !(await user.comparePassword(password))) {
@@ -99,45 +154,90 @@ export const login = async (req, res, next) => {
       });
     }
 
+    if (!user.isEmailVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email address before logging in.",
+      });
+    }
+
     const token = generateToken(user);
+
+    // Set the cookie with the JWT
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
 
     res.status(200).json({
       success: true,
-      token,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Forgot password: generate reset token and send email
+// Logout
+export const logout = async (req, res, next) => {
+  try {
+    res.clearCookie("auth_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Forgot password: generate a single-use reset credential
 export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
-    if (!email) {
+    if (!email || typeof email !== "string") {
       return res
         .status(400)
-        .json({ success: false, message: "Email is required" });
+        .json({ success: false, message: "Valid email is required" });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      // Do not reveal whether email exists
+      // Return a generic response to avoid user-account enumeration.
       return res.status(200).json({
         success: true,
         message: "If that email exists, a reset link was sent",
       });
     }
 
-    const token = crypto.randomBytes(20).toString("hex");
-    user.resetPasswordToken = token;
-    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+    // Generate a high-entropy reset token.
+    const rawToken = crypto.randomBytes(32).toString("hex");
+
+    // Store only a one-way digest of the reset token.
+    // This prevents a database disclosure from directly exposing
+    // the usable password-reset credential.
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+
+    // Persist only the digest and its expiration time.
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
     await user.save({ validateBeforeSave: false });
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const resetUrl = `${frontendUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
-    // Use shared email service and templates (non-blocking)
+    // Send the original token to the intended user.
+    // The database stores only its SHA-256 digest.
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}` + `&email=${encodeURIComponent(email)}`;
+
+    // Send the reset link through the application's email service.
     (async () => {
       try {
         const [{ passwordResetTemplate }, { sendEmail }] = await Promise.all([
@@ -150,10 +250,12 @@ export const forgotPassword = async (req, res, next) => {
           resetUrl,
         });
 
-        await sendEmail({ to: email, subject, html });
+        await sendEmail({
+          to: email,
+          subject,
+          html,
+        });
       } catch (err) {
-        // Log and continue — keep API response same as when email succeeds
-        // eslint-disable-next-line no-console
         console.error(
           "[Email] Failed to send password reset email:",
           err?.message || err,
@@ -170,37 +272,243 @@ export const forgotPassword = async (req, res, next) => {
   }
 };
 
-// Reset password using token
+// Reset password using the single-use reset credential
 export const resetPassword = async (req, res, next) => {
   try {
     const { token, email, password } = req.body;
-    if (!token || !email || !password) {
+    if (!token || !email || !password || typeof token !== "string" || typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({
         success: false,
-        message: "Token, email and new password are required",
+        message: "Valid token, email and new password are required",
+      });
+    }
+
+    // Derive the same SHA-256 digest from the submitted token
+    // before performing the database lookup.
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      email,
+
+      // Compare token digests rather than storing/comparing raw secrets.
+      resetPasswordToken: hashedToken,
+
+      // Accept only tokens that have not expired.
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+    }
+
+    user.password = password;
+    // Invalidate the reset credential immediately after successful use.
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password has been reset",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Verify email using token
+export const verifyEmail = async (req, res, next) => {
+  try {
+    const { token, email } = req.body;
+    if (!token || !email || typeof token !== "string" || typeof email !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Valid token and email are required",
       });
     }
 
     const user = await User.findOne({
       email,
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() },
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: Date.now() },
     });
+
     if (!user) {
       return res
         .status(400)
-        .json({ success: false, message: "Invalid or expired token" });
+        .json({ success: false, message: "Invalid or expired verification token" });
     }
 
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save({ validateBeforeSave: false });
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Password has been reset" });
+    // Optionally generate token for auto-login
+    const jwtToken = generateToken(user);
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+      token: jwtToken,
+    });
   } catch (error) {
     next(error);
+  }
+};
+
+// Resend verification email
+export const resendVerificationEmail = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Valid email is required",
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: "If that email exists, a verification link was sent",
+      });
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified",
+      });
+    }
+
+    const token = crypto.randomBytes(20).toString("hex");
+    user.emailVerificationToken = token;
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+    await user.save({ validateBeforeSave: false });
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const verificationUrl = `${frontendUrl}/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+
+    (async () => {
+      try {
+        const [{ emailVerificationTemplate }, { sendEmail }] = await Promise.all([
+          import("../services/email/emailVerificationTemplates.js"),
+          import("../services/email/emailService.js"),
+        ]);
+
+        const { subject, html } = emailVerificationTemplate({
+          name: user.name,
+          verificationUrl,
+        });
+
+        await sendEmail({ to: email, subject, html });
+      } catch (err) {
+        console.error(
+          "[Email] Failed to resend verification email:",
+          err?.message || err,
+        );
+      }
+    })();
+
+    return res.status(200).json({
+      success: true,
+      message: "If that email exists, a verification link was sent",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Google OAuth login/register
+// @route   POST /api/auth/google
+// @access  Public
+export const googleAuth = async (req, res, next) => {
+  try {
+    const { token, role } = req.body;
+
+    const allowedRoles = ["user", "lawyer"];
+    if (role && !allowedRoles.includes(role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid role specified for registration",
+      });
+    }
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      if (!role) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select a role to complete registration.",
+        });
+      }
+
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        role,
+        profilePhoto: picture,
+        isEmailVerified: true,
+      });
+      
+      // Initialize profiles for lawyer/authority if needed based on role (similar to standard register)
+      if (role === "lawyer") {
+        await LawyerProfile.create({ user: user._id });
+      } else if (role === "authority") {
+        await AuthorityProfile.create({ user: user._id });
+      }
+    } else {
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.isEmailVerified = true;
+        await user.save();
+      }
+    }
+
+    const jwtToken = generateToken(user);
+
+    // Set the cookie with the JWT
+    res.cookie("auth_token", jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
+    res.status(200).json({
+      success: true,
+      token: jwtToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePhoto: user.profilePhoto,
+      },
+    });
+  } catch (error) {
+    console.error("Google Auth error:", error);
+    res.status(500).json({ success: false, message: "Google authentication failed" });
   }
 };

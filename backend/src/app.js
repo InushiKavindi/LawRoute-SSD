@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import morgan from "morgan";
+import { mongoSanitize } from "./middleware/mongoSanitize.js";
 import errorMiddleware from "./middleware/errorMiddleware.js";
 
 import authRoutes from "./routes/authRoutes.js";
@@ -18,8 +20,15 @@ import authorityRoutes from "./routes/authority/authorityRoutes.js";
 const app = express();
 
 // Core Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: [process.env.FRONTEND_URL, "http://localhost:5173"].filter(Boolean),
+    credentials: true, // Required for cookies to be sent cross-origin
+  })
+);
+app.use(cookieParser());
 app.use(express.json());
+app.use(mongoSanitize);
 app.use(morgan("dev"));
 
 // Base Route

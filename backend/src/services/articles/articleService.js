@@ -49,15 +49,14 @@ export const createArticle = async ({
   return article;
 };
 
-export const getAllArticles = async ({ authHeader, query }) => {
+export const getAllArticles = async ({ token, query }) => {
   let isAdmin = false;
   let adminId = null;
   let requesterId = null;
   let requesterRole = null;
 
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (token) {
     try {
-      const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select("role");
       if (user) {
@@ -111,13 +110,12 @@ export const getAllArticles = async ({ authHeader, query }) => {
 };
 
 // Return pending articles authored by others (exclude the requester).
-export const getPendingOthersArticles = async ({ authHeader, extraQuery = {} }) => {
+export const getPendingOthersArticles = async ({ token, extraQuery = {} }) => {
   let requesterId = null;
   let requesterRole = null;
 
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (token) {
     try {
-      const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select("role");
       if (user) {
@@ -167,6 +165,13 @@ export const updateArticleStatus = async ({ id, status, user }) => {
   if (!article) {
     const err = new Error("Article not found");
     err.status = 404;
+    throw err;
+  }
+
+  // Prevent modifying the status of a rejected article
+  if (article.status === "rejected") {
+    const err = new Error("The status of a rejected article cannot be changed");
+    err.status = 403;
     throw err;
   }
 
@@ -264,6 +269,13 @@ export const updateArticleStatus = async ({ id, status, user }) => {
       console.error("[Email] Error preparing article status notification:", err.message);
     }
     return { deleted: false, article };
+  }
+
+  // PENDING: only the article's author or an admin may revert an article to pending
+  if (actingUserId !== authorId && actingRole !== "admin") {
+    const err = new Error("Only the article author or an admin can change the status to pending");
+    err.status = 403;
+    throw err;
   }
 
   article.publishedBy = null;
@@ -384,7 +396,7 @@ export const updateArticle = async ({ id, user, title, content, category, imageU
   return article;
 };
 
-export const getArticleById = async ({ id, authHeader }) => {
+export const getArticleById = async ({ id, token }) => {
   const cleanId = String(id).replace(/[<>]/g, "");
 
   if (!mongoose.Types.ObjectId.isValid(cleanId)) {
@@ -403,9 +415,8 @@ export const getArticleById = async ({ id, authHeader }) => {
   // Determine requester role (if any)
   let requesterId = null;
   let requesterRole = null;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (token) {
     try {
-      const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select("role");
       if (user) {
