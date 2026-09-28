@@ -486,9 +486,19 @@ export const googleAuth = async (req, res, next) => {
       }
     }
 
+    const jwtToken = generateToken(user);
+
+    // Set the cookie with the JWT
+    res.cookie("auth_token", jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
     res.status(200).json({
       success: true,
-      token: generateToken(user),
+      token: jwtToken,
       user: {
         id: user._id,
         name: user.name,

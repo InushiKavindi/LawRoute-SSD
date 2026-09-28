@@ -106,8 +106,8 @@ export default function AuthPage() {
           token: values.googleToken,
           role: values.role,
         });
-        if (response?.data?.token) {
-          setToken(response.data.token);
+        if (response?.data?.success) {
+          await refreshAuth();
           return;
         }
       } else {
