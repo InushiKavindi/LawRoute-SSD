@@ -16,6 +16,8 @@ import {
 import { useAuth } from "@/context/auth/useAuth";
 import RelatedArticlesSidebar from "@/admin/components/articles/RelatedArticlesSidebar";
 import ArticleEditForm from "@/admin/components/articles/ArticleEditForm";
+import DOMPurify from "dompurify";
+
 
 const allowedStatuses = new Set(["pending", "published", "rejected"]);
 
@@ -287,7 +289,7 @@ export default function AdminArticleView() {
           {article.subtitle && <p className="text-muted-foreground mb-4">{article.subtitle}</p>}
 
           {article.content ? (
-            <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: article.content }} />
+            <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.content) }} />
           ) : (
             <p>{article.excerpt || article.description}</p>
           )}

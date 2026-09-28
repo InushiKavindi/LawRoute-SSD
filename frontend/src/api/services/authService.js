@@ -18,4 +18,10 @@ export const resetPassword = (data) => {
 
 export const logoutUser = () => {
   return axios.post("/auth/logout");
+export const resendVerificationEmail = (data) => {
+  return axios.post("/auth/resend-verification", data);
+};
+
+export const googleAuth = (data) => {
+  return axios.post("/auth/google", data);
 };
