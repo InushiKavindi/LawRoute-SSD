@@ -63,7 +63,7 @@ export const createArticle = async (req, res, next) => {
 // Get all articles
 export const getAllArticles = async (req, res, next) => {
   try {
-    const articles = await articleService.getAllArticles({ authHeader: req.headers.authorization, query: req.query });
+    const articles = await articleService.getAllArticles({ token: req.cookies?.auth_token, query: req.query });
 
     return res.status(200).json({ success: true, count: articles.length, articles });
   } catch (err) {
@@ -81,7 +81,7 @@ export const getPendingOthersArticles = async (req, res, next) => {
     if (req.query.category) extraQuery.category = req.query.category;
 
     const articles = await articleService.getPendingOthersArticles({
-      authHeader: req.headers.authorization,
+      token: req.cookies?.auth_token,
       extraQuery,
     });
 
@@ -98,7 +98,7 @@ export const getPendingOthersArticles = async (req, res, next) => {
 export const getPublishedArticles = async (req, res, next) => {
   try {
     const query = { ...req.query, status: "published" };
-    const articles = await articleService.getAllArticles({ authHeader: req.headers.authorization, query });
+    const articles = await articleService.getAllArticles({ token: req.cookies?.auth_token, query });
 
     return res.status(200).json({ success: true, count: articles.length, articles });
   } catch (err) {
@@ -117,7 +117,7 @@ export const getMyArticles = async (req, res, next) => {
     }
 
     const articles = await articleService.getAllArticles({
-      authHeader: req.headers.authorization,
+      token: req.cookies?.auth_token,
       query: { author: String(req.user._id) },
     });
 
@@ -136,7 +136,7 @@ export const getMyArticles = async (req, res, next) => {
 export const getArticle = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const article = await articleService.getArticleById({ id, authHeader: req.headers.authorization });
+    const article = await articleService.getArticleById({ id, token: req.cookies?.auth_token });
     return res.status(200).json({ success: true, article });
   } catch (err) {
     if (typeof next === "function") return next(err);

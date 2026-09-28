@@ -8,8 +8,8 @@ import {
   Scale,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-
-import { setAuthToken } from "@/context/auth/authStorage";
+import { useAuth } from "@/context/auth/useAuth";
+import { logoutUser } from "@/api/services/authService";
 import LawRouteLogo from "@/assets/LawRouteLogo.png";
 
 import {
@@ -69,9 +69,15 @@ export function CitizenSidebar({ items = defaultItems, activeHref }) {
     activeHref ??
     (typeof window !== "undefined" ? window.location.pathname : "");
 
+  const { signOut } = useAuth();
   const navigate = useNavigate();
-  const handleLogout = () => {
-    setAuthToken(null);
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch {
+      // ignore
+    }
+    signOut();
     navigate("/auth", { replace: true });
   };
 

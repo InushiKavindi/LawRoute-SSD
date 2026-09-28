@@ -14,21 +14,21 @@ import { Link } from "react-router-dom";
 
 export default function AuthPage() {
   const navigate = useNavigate();
-  const { token, role, setToken } = useAuth();
+  const { isAuthenticated, role, refreshAuth } = useAuth();
   const [mode, setMode] = useState("signin");
   const isSignUp = mode === "signup";
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get("redirect");
 
   useEffect(() => {
-    if (!token) return;
+    if (!isAuthenticated) return;
 
     if (redirect) {
       navigate(redirect, { replace: true });
     } else {
       navigate(getDashboardPathForRole(role), { replace: true });
     }
-  }, [token, role, navigate, redirect]);
+  }, [isAuthenticated, role, navigate, redirect]);
 
   const [signInValues, setSignInValues] = useState({
     email: "",
@@ -69,8 +69,8 @@ export default function AuthPage() {
         });
       }
 
-      if (response?.data?.token) {
-        setToken(response.data.token);
+      if (response?.data?.success) {
+        await refreshAuth();
       }
     } catch (err) {
       if (err?.status === 403) {
@@ -122,6 +122,7 @@ export default function AuthPage() {
       }
 
       if (response?.data?.success) {
+        await refreshAuth();
         setRegistrationMessage(response.data.message || "Registration successful. Please check your email to verify your account.");
       }
     } catch (err) {
